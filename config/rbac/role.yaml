@@ -1,0 +1,84 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - awssecretaccesses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - awssecretaccesses/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - awssecretaccesses/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - secretproviders
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - secretproviders/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - secretproviders/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - secrets/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - secrets.kscp.io
+  resources:
+  - secrets/status
+  verbs:
+  - get
+  - patch
+  - update

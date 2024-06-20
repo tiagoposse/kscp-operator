@@ -1,0 +1,9 @@
+## Append samples of your project ##
+resources:
+- secrets_v1alpha1_secret.yaml
+- secrets_v1alpha1_secretaccess.yaml
+- secrets_v1alpha1_awssecret.yaml
+- secrets_v1alpha1_awssecretaccess.yaml
+- secrets_v1alpha1_secretprovider.yaml
+- secrets_v1alpha1_secretprovider2.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples
