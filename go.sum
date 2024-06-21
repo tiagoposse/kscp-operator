@@ -147,6 +147,8 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
+github.com/tiagoposse/go-sync-types v0.0.0-20230606060517-e7839c4bca50 h1:1zKrWJQ/xRQn228Mgm6hngInbsCMBCOXGpS6prmLl8g=
+github.com/tiagoposse/go-sync-types v0.0.0-20230606060517-e7839c4bca50/go.mod h1:j9oVYHmCGiG0eHjiA5COKhxhVyjp20eR1pCNhQ/EK6c=
 github.com/toncek345/reggenerator v1.1.1 h1:pAkdqdSiFb82qGSLXC+hzEXMpKRu4UybWMZ6c1v41f4=
 github.com/toncek345/reggenerator v1.1.1/go.mod h1:xk0cAuMiRNO5PBSMxDbyuYye6BH0MZOFEqPXkNVwkws=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

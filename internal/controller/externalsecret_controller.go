@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
 	"github.com/olebedev/when"
@@ -46,9 +47,18 @@ type SecretReconciler struct {
 	Scheme             *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=secrets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=secrets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=secrets/finalizers,verbs=update
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecrets/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecrets/finalizers,verbs=update
+
+func (r *SecretReconciler) err(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, err error) (reconcile.Result, error) {
+	reqLogger.Error(err, "")
+	if err := r.Status().Update(ctx, secret); err != nil {
+		reqLogger.Error(err, "updating status")
+	}
+
+	return ctrl.Result{RequeueAfter: time.Minute}, err
+}
 
 func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// providers := ctx.Value(utils.ProviderContextKey{}).(map[string]Provider)
@@ -62,7 +72,7 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// r.Providers = providers
 	reqLogger := log.FromContext(ctx)
 
-	secret := &secretsv1alpha1.Secret{}
+	secret := &secretsv1alpha1.ExternalSecret{}
 	err := r.Get(ctx, req.NamespacedName, secret)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -70,14 +80,14 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, err
+		return r.err(ctx, reqLogger, secret, fmt.Errorf("getting secret: %w", err))
 	}
 
 	// Secret is marked to be deleted, delete AWS Secret
 	if secret.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(secret, secretsv1alpha1.SecretFinalizer) {
 			if err := r.deleteSecret(ctx, reqLogger, secret); err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{RequeueAfter: time.Minute}, err
 			}
 
 			// Remove secretFinalizer. Once all finalizers have been
@@ -85,7 +95,7 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			controllerutil.RemoveFinalizer(secret, secretsv1alpha1.SecretFinalizer)
 			err := r.Update(ctx, secret)
 			if err != nil {
-				return ctrl.Result{}, err
+				return r.err(ctx, reqLogger, secret, fmt.Errorf("removing finalizer: %w", err))
 			}
 		}
 		return ctrl.Result{}, nil
@@ -93,16 +103,25 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	if !secret.Status.Created {
 		if err := r.createSecret(ctx, reqLogger, secret); err != nil {
-			reqLogger.Error(err, "creating secret")
-			return ctrl.Result{}, err
+			secret.Status.Conditions = append(secret.Status.Conditions, v1.Condition{
+				Type:               "Unavailable",
+				Status:             v1.ConditionFalse,
+				Reason:             "CreationFailed",
+				LastTransitionTime: v1.Now(),
+				Message:            err.Error(),
+			})
+
+			return r.err(ctx, reqLogger, secret, fmt.Errorf("creating secret: %w", err))
 		}
 	} else {
 		if err := r.updateSecret(ctx, reqLogger, secret); err != nil {
-			reqLogger.Error(err, "updating secret")
-			return ctrl.Result{}, err
+			return r.err(ctx, reqLogger, secret, fmt.Errorf("updating secret: %w", err))
 		}
 	}
 
+	if err := r.Status().Update(ctx, secret); err != nil {
+		reqLogger.Error(err, "updating state")
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -110,11 +129,11 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 func (r *SecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&secretsv1alpha1.Secret{}).
+		For(&secretsv1alpha1.ExternalSecret{}).
 		Complete(r)
 }
 
-func generateRandomSecret(secret *v1alpha1.Secret, existingRe *string) error {
+func generateRandomSecret(secret *v1alpha1.ExternalSecret, existingRe *string) error {
 	re := regexp.MustCompile(`//random(?:(.+))`)
 	var randRe string
 
@@ -151,15 +170,17 @@ func generateRandomSecret(secret *v1alpha1.Secret, existingRe *string) error {
 	return nil
 }
 
-func (r *SecretReconciler) createSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret) error {
+func (r *SecretReconciler) createSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error {
 	// Add finalizer for this CR
 	if !controllerutil.ContainsFinalizer(secret, secretsv1alpha1.SecretFinalizer) {
 		controllerutil.AddFinalizer(secret, secretsv1alpha1.SecretFinalizer)
-		err := r.Update(ctx, secret)
-		if err != nil {
+		if err := r.Update(ctx, secret); err != nil {
 			return err
 		}
 	}
+
+	secret.Status.Conditions = make([]v1.Condition, 0)
+	secret.Status.Provider = make(map[string]string)
 
 	if secret.Spec.SecretString == "//external" {
 		secret.Spec.SecretString = "PLACEHOLDER"
@@ -170,27 +191,23 @@ func (r *SecretReconciler) createSecret(ctx context.Context, reqLogger logr.Logg
 		}
 	}
 
-	fmt.Printf("%#v\n", r.ProviderController.providers)
-
-	// if err := r.Providers[secret.Spec.Provider].CreateSecret(ctx, reqLogger, secret); err != nil {
-	// 	return err
-	// }
+	if provider, err := r.ProviderController.GetProvider(ctx, secret.Spec.Provider); err != nil {
+		reqLogger.Error(err, "getting provider")
+		return err
+	} else if err := provider.CreateSecret(ctx, reqLogger, secret); err != nil {
+		return err
+	}
 
 	secret.Status.Created = true
 	secret.Status.SecretName = secret.Spec.SecretName
 	secret.Status.SecretVersion = "1"
-	secret.Status.LastUpdateDate = v1.Now()
-	secret.Status.Conditions = make([]v1.Condition, 0)
-	secret.Status.Provider = make(map[string]string)
+	t := v1.Now()
+	secret.Status.LastUpdateDate = &t
 
-	if err := r.Status().Update(ctx, secret); err != nil {
-		reqLogger.Error(err, "Updating secret status")
-		return err
-	}
 	return nil
 }
 
-func (r *SecretReconciler) updateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret) error {
+func (r *SecretReconciler) updateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error {
 	// if secret.Spec.Rotate != "" && secret.Status.NextRotateDate == nil {
 	// 	w := when.New(nil)
 	// 	if t, err := w.Parse(secret.Spec.Rotate, time.Now()); err != nil {
@@ -215,6 +232,7 @@ func (r *SecretReconciler) updateSecret(ctx context.Context, reqLogger logr.Logg
 		reqLogger.Error(err, "getting provider")
 		return err
 	}
+
 	lastChangedDate, err := provider.GetSecretLastChangedDate(ctx, reqLogger, secret)
 	if err != nil {
 		reqLogger.Error(err, "getting last changed date")
@@ -236,7 +254,7 @@ func (r *SecretReconciler) updateSecret(ctx context.Context, reqLogger logr.Logg
 	return nil
 }
 
-func (r *SecretReconciler) deleteSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret) error {
+func (r *SecretReconciler) deleteSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error {
 	reqLogger.Info("Successfully finalized Secret")
 
 	provider, err := r.ProviderController.GetProvider(ctx, secret.Spec.Provider)

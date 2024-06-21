@@ -23,8 +23,8 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// SecretSpec defines the desired state of Secret
-type SecretSpec struct {
+// ExternalSecretSpec defines the desired state of Secret
+type ExternalSecretSpec struct {
 	// SecretString is the secret data, in string format
 	SecretString   string            `json:"secretString,omitempty"`
 	SecretName     string            `json:"secretName"`
@@ -36,13 +36,13 @@ type SecretSpec struct {
 	ProviderSpec   map[string]string `json:"providerSpec"`
 }
 
-// SecretStatus defines the observed state of Secret
-type SecretStatus struct {
+// ExternalSecretStatus defines the observed state of Secret
+type ExternalSecretStatus struct {
 	Conditions     []metav1.Condition `json:"conditions"`
 	SecretName     string             `json:"name"`
 	SecretVersion  string             `json:"version"`
 	DeletionDate   *metav1.Time       `json:"deletionDate,omitempty"`
-	LastUpdateDate metav1.Time        `json:"lastUpdateDate"`
+	LastUpdateDate *metav1.Time       `json:"lastUpdateDate"`
 	Created        bool               `json:"created"`
 	IsExternal     bool               `json:"isExternal"`
 	IsRandom       bool               `json:"isRandom"`
@@ -55,23 +55,23 @@ type SecretStatus struct {
 //+kubebuilder:subresource:status
 
 // Secret is the Schema for the secret API
-type Secret struct {
+type ExternalSecret struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   SecretSpec   `json:"spec,omitempty"`
-	Status SecretStatus `json:"status,omitempty"`
+	Spec   ExternalSecretSpec   `json:"spec,omitempty"`
+	Status ExternalSecretStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
 // SecretList contains a list of Secret
-type SecretList struct {
+type ExternalSecretList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Secret `json:"items"`
+	Items           []ExternalSecret `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Secret{}, &SecretList{})
+	SchemeBuilder.Register(&ExternalSecret{}, &ExternalSecretList{})
 }

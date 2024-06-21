@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	sync "github.com/tiagoposse/go-sync-types"
 	"github.com/tiagoposse/kscp-operator/api/v1alpha1"
 	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
 	"github.com/tiagoposse/kscp-operator/providers/aws"
@@ -14,36 +15,33 @@ import (
 
 type Provider interface {
 	Init(config map[string]string) error
-	DeleteSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret) error
-	CreateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret) error
-	UpdateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret) error
-	CreateAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.SecretAccess) error
-	DeleteAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.SecretAccess) error
-	UpdateAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.SecretAccess) error
-	GetSecretLastChangedDate(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret) (*time.Time, error)
+	DeleteSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error
+	CreateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error
+	UpdateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error
+	CreateAccess(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, access *secretsv1alpha1.ExternalSecretAccess) error
+	UpdateAccess(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, access *secretsv1alpha1.ExternalSecretAccess) error
+	DeleteAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.ExternalSecretAccess) error
+	GetSecretLastChangedDate(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) (*time.Time, error)
 }
 
 func NewProviderController(cli client.Client) *ProviderController {
 	return &ProviderController{
-		providers: make(map[string]Provider),
+		providers: sync.NewMap[string, Provider](),
 		cli:       cli,
 	}
 }
 
 type ProviderController struct {
-	providers map[string]Provider
+	providers *sync.Map[string, Provider]
 	cli       client.Client
 }
 
-func (pc *ProviderController) All() map[string]Provider {
-	return pc.providers
-}
-
 func (pc *ProviderController) GetProvider(ctx context.Context, provider string) (Provider, error) {
-	if len(pc.providers) == 0 {
+	if pc.providers.Length() == 0 {
 		pc.InitProviders(ctx, pc.cli)
 	}
-	if val, ok := pc.providers[provider]; ok {
+
+	if val, ok := pc.providers.Get(provider); ok {
 		return val, nil
 	}
 
@@ -51,11 +49,11 @@ func (pc *ProviderController) GetProvider(ctx context.Context, provider string) 
 }
 
 func (pc *ProviderController) Add(providerName string, providerSpec Provider) {
-	pc.providers[providerName] = providerSpec
+	pc.providers.Put(providerName, providerSpec)
 }
 
 func (pc *ProviderController) InitProviders(ctx context.Context, cli client.Client) error {
-	providerList := &v1alpha1.SecretProviderList{}
+	providerList := &v1alpha1.ExternalSecretProviderList{}
 	if err := cli.List(ctx, providerList); err != nil {
 		return err
 	}
@@ -67,7 +65,7 @@ func (pc *ProviderController) InitProviders(ctx context.Context, cli client.Clie
 			if err := p.Init(provider.Spec.Config); err != nil {
 				return err
 			}
-			pc.providers[provider.Name] = p
+			pc.providers.Put(provider.Name, p)
 		}
 	}
 

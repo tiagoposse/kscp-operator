@@ -25,23 +25,17 @@ import (
 
 // ExternalSecretAccessSpec defines the desired state of ExternalSecretAccess
 type ExternalSecretAccessSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
 	// AccessSubjects is a list of service account refs that can access this secret
-	AccessSubjects []SecretAccessSubject `json:"accessSubjects,omitempty"`
+	AccessSubjects []SecretAccessSubject `json:"subjects,omitempty"`
 	// ExternalSecretName is the name of the secret access will be created for
 	SecretName string `json:"secretName"`
 }
 
 // ExternalSecretAccessStatus defines the observed state of ExternalSecretAccess
 type ExternalSecretAccessStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
 	// Conditions represent the latest available observations of an object's state
 	Conditions     []metav1.Condition    `json:"conditions"`
-	LastUpdateDate metav1.Time           `json:"lastUpdateDate"`
+	LastUpdateDate *metav1.Time          `json:"lastUpdateDate"`
 	Created        bool                  `json:"created"`
 	Subjects       []SecretAccessSubject `json:"subjects"`
 	ProviderType   string                `json:"providerType"`

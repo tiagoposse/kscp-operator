@@ -18,14 +18,18 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
 	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
@@ -38,23 +42,29 @@ type SecretAccessReconciler struct {
 	ProviderController *ProviderController
 }
 
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=awssecretaccesses,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=awssecretaccesses/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=awssecretaccesses/finalizers,verbs=update
+func (r *SecretAccessReconciler) err(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.ExternalSecretAccess, err error) (reconcile.Result, error) {
+	reqLogger.Error(err, "")
+	fmt.Printf("%#v\n", access.Status)
+	if err := r.Status().Update(ctx, access); err != nil {
+		reqLogger.Error(err, "updating status")
+	}
+
+	return ctrl.Result{RequeueAfter: time.Minute}, err
+}
+
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretaccesses,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretaccesses/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretaccesses/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the SecretAccess object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *SecretAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.FromContext(ctx)
 
-	access := &secretsv1alpha1.SecretAccess{}
+	access := &secretsv1alpha1.ExternalSecretAccess{}
 	err := r.Get(ctx, req.NamespacedName, access)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -62,51 +72,55 @@ func (r *SecretAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, err
+		return r.err(ctx, reqLogger, access, err)
 	}
 
 	// Secret is marked to be deleted, delete AWS Secret
 	if access.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(access, secretsv1alpha1.SecretFinalizer) {
 			if err := r.deleteAccess(ctx, reqLogger, access); err != nil {
-				return ctrl.Result{}, err
+				return r.err(ctx, reqLogger, access, err)
 			}
 
 			// Remove secretFinalizer. Once all finalizers have been
 			// removed, the object will be deleted.
 			controllerutil.RemoveFinalizer(access, secretsv1alpha1.SecretFinalizer)
-			err := r.Update(ctx, access)
-			if err != nil {
-				return ctrl.Result{}, err
+			if err := r.Update(ctx, access); err != nil {
+				return r.err(ctx, reqLogger, access, err)
 			}
 		}
+
 		return ctrl.Result{}, nil
 	}
 
-	secret := &secretsv1alpha1.Secret{}
+	secret := &secretsv1alpha1.ExternalSecret{}
 	err = r.Get(ctx, types.NamespacedName{
 		Namespace: req.Namespace,
 		Name:      access.Spec.SecretName,
 	}, secret)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			reqLogger.Info("Secret resource not found. Ignoring since object must be deleted.")
+			reqLogger.Info(fmt.Sprintf("Secret %s not found. Ignoring since object must be deleted.", access.Spec.SecretName))
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, err
+		return r.err(ctx, reqLogger, access, err)
 	}
 
 	if !access.Status.Created {
 		if err := r.createAccess(ctx, reqLogger, secret, access); err != nil {
-			reqLogger.Error(err, "creating access")
-			return ctrl.Result{}, err
+			return r.err(ctx, reqLogger, access, fmt.Errorf("creating access: %w", err))
 		}
 	} else {
-		if err := r.updateAccess(ctx, reqLogger, access); err != nil {
-			reqLogger.Error(err, "updating access")
-			return ctrl.Result{}, err
+		if err := r.updateAccess(ctx, reqLogger, secret, access); err != nil {
+			return r.err(ctx, reqLogger, access, fmt.Errorf("updating access: %w", err))
 		}
+	}
+	t := v1.Now()
+	access.Status.LastUpdateDate = &t
+
+	if err := r.Status().Update(ctx, access); err != nil {
+		return r.err(ctx, reqLogger, access, fmt.Errorf("updating status after exec: %w", err))
 	}
 
 	return ctrl.Result{}, nil
@@ -115,46 +129,49 @@ func (r *SecretAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 // SetupWithManager sets up the controller with the Manager.
 func (r *SecretAccessReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&secretsv1alpha1.SecretAccess{}).
+		For(&secretsv1alpha1.ExternalSecretAccess{}).
 		Complete(r)
 }
 
-func (r *SecretAccessReconciler) createAccess(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.Secret, access *secretsv1alpha1.SecretAccess) error {
+func (r *SecretAccessReconciler) createAccess(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, access *secretsv1alpha1.ExternalSecretAccess) error {
+	access.Status.Provider = make(map[string]string)
+	access.Status.Conditions = make([]v1.Condition, 0)
+	access.Status.Subjects = make([]secretsv1alpha1.SecretAccessSubject, 0)
+
 	provider, err := r.ProviderController.GetProvider(ctx, secret.Spec.Provider)
 	if err != nil {
-		reqLogger.Error(err, "getting provider")
-		return err
+		return fmt.Errorf("getting provider: %w", err)
 	}
-	if err := provider.CreateAccess(ctx, reqLogger, access); err != nil {
-		return err
+	if err := provider.CreateAccess(ctx, reqLogger, secret, access); err != nil {
+		return fmt.Errorf("provider creation: %w", err)
 	}
 
 	access.Status.Subjects = access.Spec.AccessSubjects
 	access.Status.ProviderType = secret.Spec.Provider
 
-	return r.Status().Update(ctx, access)
+	return nil
 }
 
-func (r *SecretAccessReconciler) deleteAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.SecretAccess) error {
+func (r *SecretAccessReconciler) deleteAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.ExternalSecretAccess) error {
 	provider, err := r.ProviderController.GetProvider(ctx, access.Status.ProviderType)
 	if err != nil {
-		reqLogger.Error(err, "getting provider")
-		return err
+		return fmt.Errorf("getting provider: %w", err)
 	}
+
 	return provider.DeleteAccess(ctx, reqLogger, access)
 }
 
-func (r *SecretAccessReconciler) updateAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.SecretAccess) error {
+func (r *SecretAccessReconciler) updateAccess(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, access *secretsv1alpha1.ExternalSecretAccess) error {
 	provider, err := r.ProviderController.GetProvider(ctx, access.Status.ProviderType)
 	if err != nil {
-		reqLogger.Error(err, "getting provider")
-		return err
+		return fmt.Errorf("getting provider: %w", err)
 	}
-	if err := provider.UpdateAccess(ctx, reqLogger, access); err != nil {
-		return err
+	if err := provider.UpdateAccess(ctx, reqLogger, secret, access); err != nil {
+		return fmt.Errorf("provider update: %w", err)
 	}
 	access.Status.Subjects = access.Spec.AccessSubjects
-	return r.Status().Update(ctx, access)
+
+	return nil
 }
 
 type AssertLogger struct {

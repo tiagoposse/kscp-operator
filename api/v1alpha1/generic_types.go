@@ -1,8 +1,17 @@
 package v1alpha1
 
-type SecretAccessSubject struct {
+type SecretAccessSubjectServiceAccount struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 }
 
-const SecretFinalizer = "secrets.kscp.io/finalizer"
+type SecretAccessSubjectProviderIdentifier struct {
+	Identifier string `json:"identifier"`
+}
+
+type SecretAccessSubject struct {
+	ServiceAccount     *SecretAccessSubjectServiceAccount     `json:"serviceAccount,omitempty"`
+	ProviderIdentifier *SecretAccessSubjectProviderIdentifier `json:"provider,omitempty"`
+}
+
+const SecretFinalizer = "kscp.io/finalizer"

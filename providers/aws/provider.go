@@ -31,6 +31,12 @@ type AwsSecretStatus struct {
 	KmsKeyArn *string `json:"kmsKeyArn,omitempty"`
 }
 
+// AwsStatus defines the desired state of Secret
+type AwsSecretAccessStatus struct {
+	PolicyArn string  `json:"policyArn"`
+	RoleName  *string `json:"roleName"`
+}
+
 type AwsSecretSpec struct {
 	KmsKeyArn *string `json:"kmsKey,omitempty"`
 }

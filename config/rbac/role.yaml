@@ -5,9 +5,9 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - awssecretaccesses
+  - externalsecretaccesses
   verbs:
   - create
   - delete
@@ -17,23 +17,23 @@ rules:
   - update
   - watch
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - awssecretaccesses/finalizers
+  - externalsecretaccesses/finalizers
   verbs:
   - update
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - awssecretaccesses/status
+  - externalsecretaccesses/status
   verbs:
   - get
   - patch
   - update
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - secretproviders
+  - externalsecretproviders
   verbs:
   - create
   - delete
@@ -43,23 +43,23 @@ rules:
   - update
   - watch
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - secretproviders/finalizers
+  - externalsecretproviders/finalizers
   verbs:
   - update
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - secretproviders/status
+  - externalsecretproviders/status
   verbs:
   - get
   - patch
   - update
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - secrets
+  - externalsecrets
   verbs:
   - create
   - delete
@@ -69,15 +69,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - secrets/finalizers
+  - externalsecrets/finalizers
   verbs:
   - update
 - apiGroups:
-  - secrets.kscp.io
+  - kscp.io
   resources:
-  - secrets/status
+  - externalsecrets/status
   verbs:
   - get
   - patch

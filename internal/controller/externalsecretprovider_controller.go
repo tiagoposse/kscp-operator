@@ -36,9 +36,9 @@ type SecretProviderReconciler struct {
 	ProviderController *ProviderController
 }
 
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=secretproviders,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=secretproviders/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=secrets.kscp.io,resources=secretproviders/finalizers,verbs=update
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretproviders,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretproviders/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretproviders/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -52,7 +52,7 @@ type SecretProviderReconciler struct {
 func (r *SecretProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.FromContext(ctx)
 
-	provider := &secretsv1alpha1.SecretProvider{}
+	provider := &secretsv1alpha1.ExternalSecretProvider{}
 	err := r.Get(ctx, req.NamespacedName, provider)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -78,6 +78,6 @@ func (r *SecretProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 // SetupWithManager sets up the controller with the Manager.
 func (r *SecretProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&secretsv1alpha1.SecretProvider{}).
+		For(&secretsv1alpha1.ExternalSecretProvider{}).
 		Complete(r)
 }
