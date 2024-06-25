@@ -37,8 +37,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
-	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
-	"github.com/tiagoposse/kscp-operator/internal/utils"
+	secretsv1alpha1 "github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
+	"github.com/tiagoposse/secretsbeam-operator/internal/utils"
 )
 
 // SecretAccessReconciler reconciles a SecretAccess object

@@ -24,10 +24,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/tiagoposse/kscp-operator/test/utils"
+	"github.com/tiagoposse/secretsbeam-operator/test/utils"
 )
 
-const namespace = "kscp-operator-system"
+const namespace = "secretsbeam-operator-system"
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
@@ -60,7 +60,7 @@ var _ = Describe("controller", Ordered, func() {
 			var err error
 
 			// projectimage stores the name of the image used in the example
-			var projectimage = "example.com/kscp-operator:v0.0.1"
+			var projectimage = "example.com/secretsbeam-operator:v0.0.1"
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))

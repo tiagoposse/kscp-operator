@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-logr/logr"
 	sync "github.com/tiagoposse/go-sync-types"
-	"github.com/tiagoposse/kscp-operator/api/v1alpha1"
-	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
-	"github.com/tiagoposse/kscp-operator/providers/aws"
+	"github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
+	secretsv1alpha1 "github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
+	"github.com/tiagoposse/secretsbeam-operator/internal/providers/aws"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

@@ -8,8 +8,8 @@ layout:
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
-projectName: kscp-operator
-repo: github.com/tiagoposse/kscp-operator
+projectName: secretsbeam-operator
+repo: github.com/tiagoposse/secretsbeam-operator
 resources:
 - api:
     crdVersion: v1
@@ -18,7 +18,7 @@ resources:
   domain: orbitops.dev
   group: secrets
   kind: Secret
-  path: github.com/tiagoposse/kscp-operator/api/v1alpha1
+  path: github.com/tiagoposse/secretsbeam-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -27,7 +27,7 @@ resources:
   domain: orbitops.dev
   group: secrets
   kind: SecretAccess
-  path: github.com/tiagoposse/kscp-operator/api/v1alpha1
+  path: github.com/tiagoposse/secretsbeam-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -36,7 +36,7 @@ resources:
   domain: orbitops.dev
   group: secrets
   kind: AwsSecret
-  path: github.com/tiagoposse/kscp-operator/api/v1alpha1
+  path: github.com/tiagoposse/secretsbeam-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -45,7 +45,7 @@ resources:
   domain: orbitops.dev
   group: secrets
   kind: AwsSecretAccess
-  path: github.com/tiagoposse/kscp-operator/api/v1alpha1
+  path: github.com/tiagoposse/secretsbeam-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -54,7 +54,7 @@ resources:
   domain: orbitops.dev
   group: secrets
   kind: SecretProvider
-  path: github.com/tiagoposse/kscp-operator/api/v1alpha1
+  path: github.com/tiagoposse/secretsbeam-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -63,6 +63,6 @@ resources:
   domain: orbitops.dev
   group: secrets
   kind: SecretProvider2
-  path: github.com/tiagoposse/kscp-operator/api/v1alpha1
+  path: github.com/tiagoposse/secretsbeam-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

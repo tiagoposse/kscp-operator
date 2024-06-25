@@ -36,8 +36,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
-	"github.com/tiagoposse/kscp-operator/internal/controller"
+	secretsv1alpha1 "github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
+	"github.com/tiagoposse/secretsbeam-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 

@@ -40,9 +40,9 @@ import (
 	"github.com/olebedev/when"
 	"github.com/toncek345/reggenerator"
 
-	"github.com/tiagoposse/kscp-operator/api/v1alpha1"
-	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
-	"github.com/tiagoposse/kscp-operator/internal/utils"
+	"github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
+	secretsv1alpha1 "github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
+	"github.com/tiagoposse/secretsbeam-operator/internal/utils"
 )
 
 // SecretReconciler reconciles a Secret object

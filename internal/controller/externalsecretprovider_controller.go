@@ -25,8 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
-	"github.com/tiagoposse/kscp-operator/providers/aws"
+	secretsv1alpha1 "github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
+	"github.com/tiagoposse/secretsbeam-operator/internal/providers/aws"
 )
 
 // SecretProviderReconciler reconciles a SecretProvider object

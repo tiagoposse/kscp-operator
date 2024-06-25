@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/go-logr/logr"
-	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
+	secretsv1alpha1 "github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
 )
 
 func (p *AwsProvider) CreateAccess(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, access *secretsv1alpha1.ExternalSecretAccess) error {
@@ -25,7 +25,7 @@ func (p *AwsProvider) CreateAccess(ctx context.Context, reqLogger logr.Logger, s
 	if val, ok := access.Status.Provider["PolicyArn"]; !ok {
 		// Create the IAM policy
 		if createPolicyOutput, err := p.iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
-			PolicyName:     aws.String(fmt.Sprintf("kscp-%s-%s", access.Namespace, access.Name)),
+			PolicyName:     aws.String(fmt.Sprintf("secretsbeam-%s-%s", access.Namespace, access.Name)),
 			PolicyDocument: aws.String(policyDocumentJSON),
 		}); err != nil {
 			return fmt.Errorf("failed to create policy: %w", err)
@@ -55,7 +55,7 @@ func (p *AwsProvider) CreateAccess(ctx context.Context, reqLogger logr.Logger, s
 
 		// Create the IAM role
 		createRoleOutput, err := p.iamClient.CreateRole(ctx, &iam.CreateRoleInput{
-			RoleName:                 aws.String(fmt.Sprintf("kscp-%s-%s", access.Namespace, access.Name)),
+			RoleName:                 aws.String(fmt.Sprintf("secretsbeam-%s-%s", access.Namespace, access.Name)),
 			AssumeRolePolicyDocument: aws.String(assumeRolePolicyDocumentJSON),
 		})
 		if err != nil {
@@ -165,7 +165,7 @@ func (p *AwsProvider) UpdateAccess(ctx context.Context, reqLogger logr.Logger, s
 		reqLogger.Error(err, "failed to marshal assume role policy document")
 		return err
 	} else if _, err = p.iamClient.UpdateAssumeRolePolicy(ctx, &iam.UpdateAssumeRolePolicyInput{
-		RoleName:       aws.String(fmt.Sprintf("kscp-%s-%s", access.Namespace, access.Name)),
+		RoleName:       aws.String(fmt.Sprintf("secretsbeam-%s-%s", access.Namespace, access.Name)),
 		PolicyDocument: aws.String(assumeRolePolicyDocumentJSON),
 	}); err != nil {
 		reqLogger.Error(err, "failed to create role")
