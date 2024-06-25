@@ -34,12 +34,12 @@ type ExternalSecretAccessSpec struct {
 // ExternalSecretAccessStatus defines the observed state of ExternalSecretAccess
 type ExternalSecretAccessStatus struct {
 	// Conditions represent the latest available observations of an object's state
-	Conditions     []metav1.Condition    `json:"conditions"`
-	LastUpdateDate *metav1.Time          `json:"lastUpdateDate"`
-	Created        bool                  `json:"created"`
-	Subjects       []SecretAccessSubject `json:"subjects"`
-	ProviderType   string                `json:"providerType"`
-	Provider       map[string]string     `json:"provider"`
+	Conditions               []metav1.Condition    `json:"conditions"`
+	Created                  bool                  `json:"created"`
+	Subjects                 []SecretAccessSubject `json:"subjects"`
+	ProviderType             string                `json:"providerType"`
+	ServiceAccountAnnotation *string               `json:"serviceAccountAnnotation,omitempty"`
+	Provider                 map[string]string     `json:"provider"`
 }
 
 //+kubebuilder:object:root=true

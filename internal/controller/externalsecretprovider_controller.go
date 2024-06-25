@@ -36,9 +36,9 @@ type SecretProviderReconciler struct {
 	ProviderController *ProviderController
 }
 
-//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretproviders,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretproviders/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kscp.io,resources=externalsecretproviders/finalizers,verbs=update
+//+kubebuilder:rbac:groups=orbitops.dev,resources=externalsecretproviders,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=orbitops.dev,resources=externalsecretproviders/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=orbitops.dev,resources=externalsecretproviders/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

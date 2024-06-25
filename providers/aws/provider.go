@@ -20,7 +20,6 @@ type AwsProvider struct {
 }
 
 type AwsProviderConfig struct {
-	accountID       string
 	OidcProviderArn string `json:"oidcProviderArn"`
 	oidcProviderID  string
 }
@@ -62,7 +61,7 @@ func (p *AwsProvider) Init(config map[string]string) error {
 		p.iamClient = iam.NewFromConfig(cfg)
 	}
 
-	p.oidcProviderID = strings.Split(p.OidcProviderArn, "/")[0]
+	p.oidcProviderID = strings.Join(strings.Split(p.OidcProviderArn, "/")[1:], "/")
 
 	return nil
 }

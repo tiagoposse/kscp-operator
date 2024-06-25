@@ -20,20 +20,23 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type RandomSecretSpec struct {
+	Size   int     `json:"size"`
+	Regex  string  `json:"regex"`
+	Rotate *string `json:"rotate,omitempty"`
+}
 
 // ExternalSecretSpec defines the desired state of Secret
 type ExternalSecretSpec struct {
 	// SecretString is the secret data, in string format
-	SecretString   string            `json:"secretString,omitempty"`
-	SecretName     string            `json:"secretName"`
+	SecretString   *string           `json:"secretString,omitempty"`
+	SecretName     *string           `json:"secretName,omitempty"`
 	Overwrite      bool              `json:"overwrite,omitempty"`
-	Account        *string           `json:"account,omitempty"`
+	Random         *RandomSecretSpec `json:"random,omitempty"`
+	External       bool              `json:"external,omitempty"`
 	RecoveryWindow int64             `json:"recoveryWindow,omitempty"`
-	Rotate         string            `json:"rotate,omitempty"`
 	Provider       string            `json:"provider"`
-	ProviderSpec   map[string]string `json:"providerSpec"`
+	ProviderSpec   map[string]string `json:"providerSpec,omitempty"`
 }
 
 // ExternalSecretStatus defines the observed state of Secret
@@ -42,7 +45,6 @@ type ExternalSecretStatus struct {
 	SecretName     string             `json:"name"`
 	SecretVersion  string             `json:"version"`
 	DeletionDate   *metav1.Time       `json:"deletionDate,omitempty"`
-	LastUpdateDate *metav1.Time       `json:"lastUpdateDate"`
 	Created        bool               `json:"created"`
 	IsExternal     bool               `json:"isExternal"`
 	IsRandom       bool               `json:"isRandom"`

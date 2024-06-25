@@ -14,4 +14,4 @@ type SecretAccessSubject struct {
 	ProviderIdentifier *SecretAccessSubjectProviderIdentifier `json:"provider,omitempty"`
 }
 
-const SecretFinalizer = "kscp.io/finalizer"
+const SecretFinalizer = "orbitops.dev/finalizer"

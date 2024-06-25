@@ -18,16 +18,20 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"regexp"
-	"strings"
+	"strconv"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	"golang.org/x/time/rate"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -38,6 +42,7 @@ import (
 
 	"github.com/tiagoposse/kscp-operator/api/v1alpha1"
 	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
+	"github.com/tiagoposse/kscp-operator/internal/utils"
 )
 
 // SecretReconciler reconciles a Secret object
@@ -47,17 +52,31 @@ type SecretReconciler struct {
 	Scheme             *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=kscp.io,resources=externalsecrets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kscp.io,resources=externalsecrets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kscp.io,resources=externalsecrets/finalizers,verbs=update
+//+kubebuilder:rbac:groups=orbitops.dev,resources=externalsecrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=orbitops.dev,resources=externalsecrets/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=orbitops.dev,resources=externalsecrets/finalizers,verbs=update
 
 func (r *SecretReconciler) err(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, err error) (reconcile.Result, error) {
 	reqLogger.Error(err, "")
+
+	condition := v1.Condition{
+		Type:    "Unavailable",
+		Message: err.Error(),
+		Status:  v1.ConditionFalse,
+	}
+	if errors.Is(err, utils.ProviderError{}) {
+		condition.Reason = "ProviderError"
+	} else {
+		condition.Reason = "ControllerError"
+	}
+
+	meta.SetStatusCondition(&secret.Status.Conditions, condition)
+
 	if err := r.Status().Update(ctx, secret); err != nil {
 		reqLogger.Error(err, "updating status")
 	}
 
-	return ctrl.Result{RequeueAfter: time.Minute}, err
+	return ctrl.Result{}, err
 }
 
 func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -75,7 +94,7 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	secret := &secretsv1alpha1.ExternalSecret{}
 	err := r.Get(ctx, req.NamespacedName, secret)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if kerrors.IsNotFound(err) {
 			reqLogger.Info("Secret resource not found. Ignoring since object must be deleted.")
 			return ctrl.Result{}, nil
 		}
@@ -83,11 +102,15 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return r.err(ctx, reqLogger, secret, fmt.Errorf("getting secret: %w", err))
 	}
 
+	if secret.Spec.SecretName == nil {
+		secret.Spec.SecretName = &secret.Name
+	}
+
 	// Secret is marked to be deleted, delete AWS Secret
 	if secret.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(secret, secretsv1alpha1.SecretFinalizer) {
 			if err := r.deleteSecret(ctx, reqLogger, secret); err != nil {
-				return ctrl.Result{RequeueAfter: time.Minute}, err
+				return r.err(ctx, reqLogger, secret, fmt.Errorf("delete secret: %s", err))
 			}
 
 			// Remove secretFinalizer. Once all finalizers have been
@@ -101,7 +124,9 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
+	var operation string
 	if !secret.Status.Created {
+		operation = "Created"
 		if err := r.createSecret(ctx, reqLogger, secret); err != nil {
 			secret.Status.Conditions = append(secret.Status.Conditions, v1.Condition{
 				Type:               "Unavailable",
@@ -113,52 +138,64 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 			return r.err(ctx, reqLogger, secret, fmt.Errorf("creating secret: %w", err))
 		}
+
+		secret.Status.Created = true
+		secret.Status.SecretVersion = "1"
 	} else {
+		operation = "Updated"
 		if err := r.updateSecret(ctx, reqLogger, secret); err != nil {
 			return r.err(ctx, reqLogger, secret, fmt.Errorf("updating secret: %w", err))
 		}
+
+		currentVersion, _ := strconv.Atoi(secret.Status.SecretVersion)
+		secret.Status.SecretVersion = strconv.Itoa(currentVersion + 1)
 	}
 
-	if err := r.Status().Update(ctx, secret); err != nil {
-		reqLogger.Error(err, "updating state")
+	secret.Status.SecretName = *secret.Spec.SecretName
+
+	condition := v1.Condition{
+		Type:    "Available",
+		Message: operation,
+		Status:  v1.ConditionTrue,
+		Reason:  operation,
 	}
+
+	meta.SetStatusCondition(&secret.Status.Conditions, condition)
+
+	if err := r.Status().Update(ctx, secret); err != nil {
+		return r.err(ctx, reqLogger, secret, fmt.Errorf("updating state: %w", err))
+	}
+
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
+	limiter := workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(10*time.Second, 10*time.Minute),
+		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsv1alpha1.ExternalSecret{}).
+		WithOptions(
+			controller.Options{
+				RateLimiter: limiter,
+			},
+		).
 		Complete(r)
 }
 
-func generateRandomSecret(secret *v1alpha1.ExternalSecret, existingRe *string) error {
-	re := regexp.MustCompile(`//random(?:(.+))`)
-	var randRe string
-
-	if matches := re.FindStringSubmatch(secret.Spec.SecretString); len(matches) > 1 {
-		randRe = matches[1]
-	} else {
-		randRe = `\S{12}`
-	}
-
-	// if the random regex is the same and the secret is not to be rotated, or we're before rotation date, do nothing
-	if existingRe != nil && *existingRe == randRe && (secret.Spec.Rotate == "" || time.Now().Before(secret.Status.NextRotateDate.Time)) {
-		return nil
-	}
-
-	res, err := reggenerator.Generate(randRe, 1)
+func generateRandomSecret(secret *v1alpha1.ExternalSecret) (string, error) {
+	res, err := reggenerator.Generate(fmt.Sprintf(`/%s{%d}/`, secret.Spec.Random.Regex, secret.Spec.Random.Size), 1)
 	if err != nil {
-		return fmt.Errorf("generating random value: %w", err)
+		return "", fmt.Errorf("generating random value: %w", err)
 	}
-	secret.Spec.SecretString = res[0]
-	secret.Status.IsRandom = true
 
-	if secret.Spec.Rotate != "" {
+	if secret.Spec.Random.Rotate != nil {
 		w := when.New(nil)
-		if wRes, err := w.Parse(secret.Spec.Rotate, time.Now()); err != nil {
-			return fmt.Errorf("parsing rotation date: %w", err)
+		if wRes, err := w.Parse(*secret.Spec.Random.Rotate, time.Now()); err != nil {
+			return "", fmt.Errorf("parsing rotation date: %w", err)
 		} else {
 			nt := v1.NewTime(wRes.Time)
 			secret.Status.NextRotateDate = &nt
@@ -167,7 +204,7 @@ func generateRandomSecret(secret *v1alpha1.ExternalSecret, existingRe *string) e
 		secret.Status.NextRotateDate = nil
 	}
 
-	return nil
+	return res[0], nil
 }
 
 func (r *SecretReconciler) createSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error {
@@ -182,73 +219,77 @@ func (r *SecretReconciler) createSecret(ctx context.Context, reqLogger logr.Logg
 	secret.Status.Conditions = make([]v1.Condition, 0)
 	secret.Status.Provider = make(map[string]string)
 
-	if secret.Spec.SecretString == "//external" {
-		secret.Spec.SecretString = "PLACEHOLDER"
+	var secretValue string
+	if secret.Spec.External {
+		secretValue = "PLACEHOLDER"
 		secret.Status.IsExternal = true
-	} else if strings.HasPrefix(secret.Spec.SecretString, "//random") {
-		if err := generateRandomSecret(secret, nil); err != nil {
+	} else if secret.Spec.Random != nil {
+		if val, err := generateRandomSecret(secret); err != nil {
 			return err
+		} else {
+			secretValue = val
 		}
+
+		secret.Status.RandomGenRegex = &secret.Spec.Random.Regex
+		secret.Status.IsRandom = true
+	} else {
+		secretValue = *secret.Spec.SecretString
 	}
 
 	if provider, err := r.ProviderController.GetProvider(ctx, secret.Spec.Provider); err != nil {
 		reqLogger.Error(err, "getting provider")
 		return err
-	} else if err := provider.CreateSecret(ctx, reqLogger, secret); err != nil {
+	} else if err := provider.CreateSecret(ctx, reqLogger, secret, secretValue); err != nil {
 		return err
 	}
 
-	secret.Status.Created = true
-	secret.Status.SecretName = secret.Spec.SecretName
-	secret.Status.SecretVersion = "1"
-	t := v1.Now()
-	secret.Status.LastUpdateDate = &t
+	secret.Status.SecretName = *secret.Spec.SecretName
 
 	return nil
 }
 
 func (r *SecretReconciler) updateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error {
-	// if secret.Spec.Rotate != "" && secret.Status.NextRotateDate == nil {
-	// 	w := when.New(nil)
-	// 	if t, err := w.Parse(secret.Spec.Rotate, time.Now()); err != nil {
-	// 		reqLogger.Error(err, "parsing rotation date")
-	// 		return err
-	// 	} else {
-	// 		secret.Status.NextRotateDate = &t.Time
-	// 	}
-	// } else if secret.Spec.Rotate == "" && secret.Status.NextRotateDate != nil {
-	// 	secret.Status.NextRotateDate = nil
-	// }
+	var secretValue string
+	if secret.Spec.External {
+		secret.Status.IsExternal = true
+		secret.Status.IsRandom = false
+		secret.Status.NextRotateDate = nil
 
-	if strings.HasPrefix(secret.Spec.SecretString, "//random") {
-		if err := generateRandomSecret(secret, secret.Status.RandomGenRegex); err != nil {
-			reqLogger.Error(err, "generating random secret")
-			return err
+		return nil
+	} else if secret.Spec.Random != nil {
+		secret.Status.IsExternal = false
+		secret.Status.RandomGenRegex = &secret.Spec.Random.Regex
+		secret.Status.IsRandom = true
+
+		if secret.Spec.Random.Rotate != nil && secret.Status.NextRotateDate == nil { // if rotation was introduced
+			if err := setSecretRotation(secret); err != nil {
+				return err
+			}
+		} else if secret.Spec.Random.Rotate == nil && secret.Status.NextRotateDate != nil { //rotate removed
+			secret.Status.NextRotateDate = nil
 		}
+
+		// not time to rotate yet
+		if secret.Spec.Random.Rotate == nil || time.Now().Before(secret.Status.NextRotateDate.Time) {
+			return nil
+		}
+
+		if val, err := generateRandomSecret(secret); err != nil {
+			return fmt.Errorf("generating random secret: %w", err)
+		} else {
+			secretValue = val
+		}
+	} else {
+		secretValue = *secret.Spec.SecretString
 	}
 
 	provider, err := r.ProviderController.GetProvider(ctx, secret.Spec.Provider)
 	if err != nil {
-		reqLogger.Error(err, "getting provider")
-		return err
+		return fmt.Errorf("getting provider: %w", err)
 	}
 
-	lastChangedDate, err := provider.GetSecretLastChangedDate(ctx, reqLogger, secret)
-	if err != nil {
-		reqLogger.Error(err, "getting last changed date")
-		return err
-	}
-
-	if lastChangedDate != nil && lastChangedDate.After(secret.Status.LastUpdateDate.Time) {
-		if err := provider.UpdateSecret(ctx, reqLogger, secret); err != nil {
-			reqLogger.Error(err, "updating secret value")
-		}
-
-		err = r.Status().Update(ctx, secret)
-		if err != nil {
-			reqLogger.Error(err, "updating secret status: %v", err.Error())
-			return err
-		}
+	if err := provider.UpdateSecret(ctx, reqLogger, secret, secretValue); err != nil {
+		return fmt.Errorf("updating secret value: %w", err)
 	}
 
 	return nil
@@ -272,6 +313,18 @@ func (r *SecretReconciler) deleteSecret(ctx context.Context, reqLogger logr.Logg
 	// 	r.Status().Update(ctx, secret)
 	// 	return fmt.Errorf("secret scheduled for deletion in %s", t.Time.String())
 	// }
+
+	return nil
+}
+
+func setSecretRotation(secret *secretsv1alpha1.ExternalSecret) error {
+	w := when.New(nil)
+	if t, err := w.Parse(*secret.Spec.Random.Rotate, time.Now()); err != nil {
+		return fmt.Errorf("parsing rotation date: %w", err)
+	} else {
+		metaTime := v1.NewTime(t.Time)
+		secret.Status.NextRotateDate = &metaTime
+	}
 
 	return nil
 }

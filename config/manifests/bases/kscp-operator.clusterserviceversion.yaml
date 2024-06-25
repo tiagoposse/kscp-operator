@@ -37,5 +37,5 @@ spec:
     url: https://kscp-operator.domain
   maturity: alpha
   provider:
-    name: kscp.io
+    name: orbitops.dev
   version: 0.0.0

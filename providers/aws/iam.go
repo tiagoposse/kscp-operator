@@ -3,11 +3,14 @@ package aws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/go-logr/logr"
 	secretsv1alpha1 "github.com/tiagoposse/kscp-operator/api/v1alpha1"
 )
@@ -60,6 +63,7 @@ func (p *AwsProvider) CreateAccess(ctx context.Context, reqLogger logr.Logger, s
 		}
 		reqLogger.Info(fmt.Sprintf("Created Role: %s\n", *createRoleOutput.Role.Arn))
 		access.Status.Provider["RoleName"] = *createRoleOutput.Role.RoleName
+		access.Status.Provider["ServiceAccountAnnotation"] = fmt.Sprintf("eks.amazonaws.com/role-arn=%s", *createRoleOutput.Role.Arn)
 	} else {
 		// Update trust policy
 		assumeRolePolicyDocumentJSON, err := p.getAssumePolicyDocument(access)
@@ -89,33 +93,70 @@ func (p *AwsProvider) CreateAccess(ctx context.Context, reqLogger logr.Logger, s
 }
 
 func (p *AwsProvider) DeleteAccess(ctx context.Context, reqLogger logr.Logger, access *secretsv1alpha1.ExternalSecretAccess) error {
+	if _, err := p.iamClient.DetachRolePolicy(ctx, &iam.DetachRolePolicyInput{
+		PolicyArn: aws.String(access.Status.Provider["PolicyArn"]),
+		RoleName:  aws.String(access.Status.Provider["RoleName"]),
+	}); err != nil {
+		var notFoundErr *types.NoSuchEntityException
+		// Ignore the error if the policy is not found
+		if ok := errors.As(err, &notFoundErr); !ok {
+			return fmt.Errorf("failed to detach policy %s from role %s: %w", access.Status.Provider["PolicyArn"], access.Status.Provider["RoleName"], err)
+		}
+	}
+	fmt.Printf("Detached policy %s from role %s\n", access.Status.Provider["PolicyArn"], access.Status.Provider["RoleName"])
+
+	if err := p.deleteNOldestPolicyVersions(ctx, access.Status.Provider["PolicyArn"], 0); err != nil {
+		var notFoundErr *types.NoSuchEntityException
+		// Ignore the error if the policy is not found
+		if ok := errors.As(err, &notFoundErr); !ok {
+			return fmt.Errorf("failed to delete policy versions %s: %w", access.Status.Provider["PolicyArn"], err)
+		}
+	}
+	fmt.Printf("Deleted policy versions from %s\n", access.Status.Provider["PolicyArn"])
+
 	if _, err := p.iamClient.DeletePolicy(ctx, &iam.DeletePolicyInput{
 		PolicyArn: aws.String(access.Status.Provider["PolicyArn"]),
 	}); err != nil {
-		reqLogger.Error(err, "failed to delete policy %s", access.Status.Provider["PolicyArn"])
-		return err
+		var notFoundErr *types.NoSuchEntityException
+		if ok := errors.As(err, &notFoundErr); !ok {
+			return fmt.Errorf("failed to delete policy %s: %w", access.Status.Provider["PolicyArn"], err)
+			// Ignore the error if the policy is not found
+		}
+		fmt.Printf("Policy %s not found, ignoring error\n", access.Status.Provider["PolicyArn"])
 	}
+	fmt.Printf("Deleted policy %s\n", access.Status.Provider["PolicyArn"])
 
 	if _, err := p.iamClient.DeleteRole(ctx, &iam.DeleteRoleInput{
 		RoleName: aws.String(access.Status.Provider["RoleName"]),
 	}); err != nil {
-		reqLogger.Error(err, "failed to delete role %s", access.Status.Provider["RoleName"])
-		return err
+		var notFoundErr *types.NoSuchEntityException
+		if ok := errors.As(err, &notFoundErr); !ok {
+			return fmt.Errorf("failed to delete role %s: %w", access.Status.Provider["RoleName"], err)
+			// Ignore the error if the role is not found
+		}
+
+		fmt.Printf("Policy %s not found, ignoring error\n", access.Status.Provider["RoleName"])
 	}
+	fmt.Printf("Deleted role %s\n", access.Status.Provider["RoleName"])
 
 	return nil
 }
 
 func (p *AwsProvider) UpdateAccess(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, access *secretsv1alpha1.ExternalSecretAccess) error {
+	policyArn := access.Status.Provider["PolicyArn"]
+
+	if err := p.deleteNOldestPolicyVersions(ctx, policyArn, 1); err != nil {
+		return fmt.Errorf("deleting oldest policy: %w", err)
+	}
 	// Update access policy
 	if policyDocumentJSON, err := getSecretAccessPolicy(secret.Status.Provider["SecretArn"]); err != nil {
 		reqLogger.Error(err, "failed to marshal policy document")
 	} else if _, err = p.iamClient.CreatePolicyVersion(ctx, &iam.CreatePolicyVersionInput{
-		PolicyArn:      aws.String(access.Status.Provider["PolicyArn"]),
+		PolicyArn:      aws.String(policyArn),
 		PolicyDocument: aws.String(policyDocumentJSON),
+		SetAsDefault:   true,
 	}); err != nil {
-		reqLogger.Error(err, "failed to update policy")
-		return err
+		return fmt.Errorf("failed to update policy: %w", err)
 	}
 
 	// Update trust policy
@@ -211,4 +252,38 @@ func getSecretAccessPolicy(secretArn string) (string, error) {
 
 	policyDocumentJSON, err := json.Marshal(policyDocument)
 	return string(policyDocumentJSON), err
+}
+
+func (p *AwsProvider) deleteNOldestPolicyVersions(ctx context.Context, policyArn string, max int) error {
+	result, err := p.iamClient.ListPolicyVersions(ctx, &iam.ListPolicyVersionsInput{
+		PolicyArn: aws.String(policyArn),
+	})
+	if err != nil {
+		return err
+	}
+
+	// Sort versions by creation date
+	sort.Slice(result.Versions, func(i, j int) bool {
+		return result.Versions[i].CreateDate.Before(*result.Versions[j].CreateDate)
+	})
+
+	n := 0
+	// Find the oldest non-default version
+	for _, version := range result.Versions {
+		if max > 0 && n >= max {
+			break
+		}
+
+		if !version.IsDefaultVersion {
+			_, err := p.iamClient.DeletePolicyVersion(ctx, &iam.DeletePolicyVersionInput{
+				PolicyArn: aws.String(policyArn),
+				VersionId: version.VersionId,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to delete policy version, %v", err)
+			}
+		}
+	}
+
+	return nil
 }

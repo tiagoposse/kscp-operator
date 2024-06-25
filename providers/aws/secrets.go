@@ -16,7 +16,7 @@ func (p *AwsProvider) DeleteSecret(ctx context.Context, reqLogger logr.Logger, s
 	reqLogger.Info("Successfully finalized Secret")
 
 	input := &secretsmanager.DeleteSecretInput{
-		SecretId:                   aws.String(secret.Spec.SecretName),
+		SecretId:                   secret.Spec.SecretName,
 		ForceDeleteWithoutRecovery: aws.Bool(secret.Spec.RecoveryWindow == 0),
 	}
 	if secret.Spec.RecoveryWindow > 0 {
@@ -37,14 +37,15 @@ func (p *AwsProvider) DeleteSecret(ctx context.Context, reqLogger logr.Logger, s
 	return nil
 }
 
-func (p *AwsProvider) CreateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error {
+func (p *AwsProvider) CreateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, value string) error {
 	input := &secretsmanager.CreateSecretInput{
-		Name:         aws.String(secret.Spec.SecretName),
-		SecretString: aws.String(secret.Spec.SecretString),
+		Name:         aws.String(*secret.Spec.SecretName),
+		SecretString: aws.String(value),
 	}
 
 	if val, ok := secret.Spec.ProviderSpec["KmsKeyArn"]; ok {
 		input.KmsKeyId = aws.String(val)
+		secret.Status.Provider["KmsKeyArn"] = val
 	}
 
 	result, err := p.secretsClient.CreateSecret(ctx, input)
@@ -53,25 +54,7 @@ func (p *AwsProvider) CreateSecret(ctx context.Context, reqLogger logr.Logger, s
 		return err
 	}
 
-	describeInput := &secretsmanager.DescribeSecretInput{
-		SecretId: result.Name,
-	}
-
-	if describeResult, err := p.secretsClient.DescribeSecret(ctx, describeInput); err != nil {
-		reqLogger.Error(err, "failed to describe secret")
-		return err
-	} else if describeResult.CreatedDate != nil {
-		reqLogger.Info(fmt.Sprintf("Secret %s created with date: %s\n", *result.Name, describeResult.CreatedDate.Format(time.RFC3339)))
-		t := v1.NewTime(aws.ToTime(describeResult.CreatedDate))
-		secret.Status.LastUpdateDate = &t
-	} else {
-		reqLogger.Info("Created Date is null")
-	}
-
-	secret.Status.Created = true
 	secret.Status.Provider["SecretArn"] = aws.ToString(result.ARN)
-	secret.Status.SecretName = aws.ToString(result.Name)
-	secret.Status.SecretVersion = aws.ToString(result.VersionId)
 
 	return nil
 }
@@ -83,49 +66,24 @@ func (p *AwsProvider) GetSecretLastChangedDate(ctx context.Context, reqLogger lo
 
 	result, err := p.secretsClient.DescribeSecret(ctx, input)
 	if err != nil {
-		reqLogger.Error(err, "failed to describe secret")
-		return nil, err
+		return nil, fmt.Errorf("failed to describe secret: %w", err)
 	}
 
 	return result.LastChangedDate, nil
 }
 
-func (p *AwsProvider) UpdateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret) error {
+func (p *AwsProvider) UpdateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, value string) error {
 	updateInput := &secretsmanager.UpdateSecretInput{
-		SecretId: aws.String(secret.Spec.SecretName),
+		SecretId:     aws.String(*secret.Spec.SecretName),
+		SecretString: aws.String(value),
 	}
 
 	result, err := p.secretsClient.UpdateSecret(ctx, updateInput)
 	if err != nil {
-		reqLogger.Error(err, "failed to update secret: %v", err)
-		return err
+		return fmt.Errorf("failed to update secret: %v", err)
 	}
 
-	describeResult, err := p.describeSecret(ctx, secret.Status.SecretName)
-	if err != nil {
-		return err
-	}
-
-	t := v1.NewTime(aws.ToTime(describeResult.LastChangedDate))
-	secret.Status.LastUpdateDate = &t
-	if result.VersionId != nil {
-		secret.Status.SecretVersion = *result.VersionId
-	} else {
-		secret.Status.SecretVersion = "unversioned"
-	}
+	secret.Status.Provider["SecretArn"] = aws.ToString(result.ARN)
 
 	return nil
-}
-
-func (p *AwsProvider) describeSecret(ctx context.Context, secretID string) (*secretsmanager.DescribeSecretOutput, error) {
-	input := &secretsmanager.DescribeSecretInput{
-		SecretId: aws.String(secretID),
-	}
-
-	result, err := p.secretsClient.DescribeSecret(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to describe secret: %v", err)
-	}
-
-	return result, nil
 }

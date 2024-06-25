@@ -2,9 +2,9 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/kscp.io_externalsecrets.yaml
-- bases/kscp.io_externalsecretaccesses.yaml
-- bases/kscp.io_externalsecretproviders.yaml
+- bases/orbitops.dev_externalsecrets.yaml
+- bases/orbitops.dev_externalsecretaccesses.yaml
+- bases/orbitops.dev_externalsecretproviders.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
