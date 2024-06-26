@@ -40,7 +40,6 @@ import (
 	"github.com/olebedev/when"
 	"github.com/toncek345/reggenerator"
 
-	"github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
 	secretsv1alpha1 "github.com/tiagoposse/secretsbeam-operator/api/v1alpha1"
 	"github.com/tiagoposse/secretsbeam-operator/internal/utils"
 )
@@ -102,8 +101,8 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return r.err(ctx, reqLogger, secret, fmt.Errorf("getting secret: %w", err))
 	}
 
-	if secret.Spec.SecretName == nil {
-		secret.Spec.SecretName = &secret.Name
+	if secret.Spec.ExternalName == nil {
+		secret.Spec.ExternalName = &secret.Name
 	}
 
 	// Secret is marked to be deleted, delete AWS Secret
@@ -151,7 +150,7 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		secret.Status.SecretVersion = strconv.Itoa(currentVersion + 1)
 	}
 
-	secret.Status.SecretName = *secret.Spec.SecretName
+	secret.Status.SecretName = *secret.Spec.ExternalName
 
 	condition := v1.Condition{
 		Type:    "Available",
@@ -186,7 +185,7 @@ func (r *SecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func generateRandomSecret(secret *v1alpha1.ExternalSecret) (string, error) {
+func generateRandomSecret(secret *secretsv1alpha1.ExternalSecret) (string, error) {
 	res, err := reggenerator.Generate(fmt.Sprintf(`/%s{%d}/`, secret.Spec.Random.Regex, secret.Spec.Random.Size), 1)
 	if err != nil {
 		return "", fmt.Errorf("generating random value: %w", err)
@@ -243,7 +242,7 @@ func (r *SecretReconciler) createSecret(ctx context.Context, reqLogger logr.Logg
 		return err
 	}
 
-	secret.Status.SecretName = *secret.Spec.SecretName
+	secret.Status.SecretName = *secret.Spec.ExternalName
 
 	return nil
 }

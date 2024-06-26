@@ -360,8 +360,8 @@ func (in *ExternalSecretSpec) DeepCopyInto(out *ExternalSecretSpec) {
 		*out = new(string)
 		**out = **in
 	}
-	if in.SecretName != nil {
-		in, out := &in.SecretName, &out.SecretName
+	if in.ExternalName != nil {
+		in, out := &in.ExternalName, &out.ExternalName
 		*out = new(string)
 		**out = **in
 	}

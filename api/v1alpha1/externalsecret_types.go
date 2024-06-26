@@ -30,7 +30,7 @@ type RandomSecretSpec struct {
 type ExternalSecretSpec struct {
 	// SecretString is the secret data, in string format
 	SecretString   *string           `json:"secretString,omitempty"`
-	SecretName     *string           `json:"secretName,omitempty"`
+	ExternalName   *string           `json:"externalName,omitempty"`
 	Overwrite      bool              `json:"overwrite,omitempty"`
 	Random         *RandomSecretSpec `json:"random,omitempty"`
 	External       bool              `json:"external,omitempty"`

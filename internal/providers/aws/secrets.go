@@ -16,7 +16,7 @@ func (p *AwsProvider) DeleteSecret(ctx context.Context, reqLogger logr.Logger, s
 	reqLogger.Info("Successfully finalized Secret")
 
 	input := &secretsmanager.DeleteSecretInput{
-		SecretId:                   secret.Spec.SecretName,
+		SecretId:                   aws.String(secret.Status.SecretName),
 		ForceDeleteWithoutRecovery: aws.Bool(secret.Spec.RecoveryWindow == 0),
 	}
 	if secret.Spec.RecoveryWindow > 0 {
@@ -39,7 +39,7 @@ func (p *AwsProvider) DeleteSecret(ctx context.Context, reqLogger logr.Logger, s
 
 func (p *AwsProvider) CreateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, value string) error {
 	input := &secretsmanager.CreateSecretInput{
-		Name:         aws.String(*secret.Spec.SecretName),
+		Name:         secret.Spec.ExternalName,
 		SecretString: aws.String(value),
 	}
 
@@ -74,7 +74,7 @@ func (p *AwsProvider) GetSecretLastChangedDate(ctx context.Context, reqLogger lo
 
 func (p *AwsProvider) UpdateSecret(ctx context.Context, reqLogger logr.Logger, secret *secretsv1alpha1.ExternalSecret, value string) error {
 	updateInput := &secretsmanager.UpdateSecretInput{
-		SecretId:     aws.String(*secret.Spec.SecretName),
+		SecretId:     secret.Spec.ExternalName,
 		SecretString: aws.String(value),
 	}
 
