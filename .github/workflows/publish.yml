@@ -27,7 +27,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
-          images: tposse/secretsbeam-operator
+          images: tposse/secrets-beam-operator
 
       - name: Build and push Docker image
         id: push
